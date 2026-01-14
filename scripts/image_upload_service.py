@@ -1,13 +1,19 @@
 """
-本地图片上传服务
-职责：作为浏览器与文件系统的桥接，允许网页将图片写入本地 assets 目录
+本地文件服务
+职责：
+1. 图片上传：允许网页将图片写入本地 assets 目录
+2. 文件保存：保存 Markdown 编辑内容
+3. 站点导出：生成纯净的只读 Docsify 站点
 运行：python scripts/image_upload_service.py
 """
 
-from flask import Flask, request, jsonify
+from flask import Flask, request, jsonify, send_file
 from flask_cors import CORS
 import os
+import re
 import time
+import shutil
+import zipfile
 from pathlib import Path
 
 app = Flask(__name__)
@@ -15,7 +21,10 @@ CORS(app)  # 允许跨域请求
 
 # 配置
 BASE_DIR = Path(__file__).parent.parent  # 项目根目录
-ASSETS_DIR = BASE_DIR / 'output' / 'SC2006' / 'docsify_site' / 'assets'
+OUTPUT_DIR = BASE_DIR / 'output' / 'SC2006'
+DOCSIFY_SITE = OUTPUT_DIR / 'docsify_site'
+ASSETS_DIR = DOCSIFY_SITE / 'assets'
+CONTENT_DIR = DOCSIFY_SITE
 
 @app.route('/upload-image', methods=['POST'])
 def upload_image():
@@ -71,20 +80,212 @@ def upload_image():
             'message': f'Upload failed: {str(e)}'
         }), 500
 
+@app.route('/save-markdown', methods=['POST'])
+def save_markdown():
+    """
+    保存 Markdown 文件
+    
+    请求参数：
+    - filename: 文件名（如 1_-_Introduction.md）
+    - content: Markdown 内容
+    
+    返回：
+    - success: bool
+    - message: 消息
+    """
+    try:
+        data = request.json
+        if not data or 'filename' not in data or 'content' not in data:
+            return jsonify({'success': False, 'message': 'Missing filename or content'}), 400
+        
+        filename = data['filename']
+        content = data['content']
+        
+        # 安全检查：防止路径遍历攻击
+        if '..' in filename or '/' in filename or '\\' in filename:
+            return jsonify({'success': False, 'message': 'Invalid filename'}), 400
+        
+        if not filename.endswith('.md'):
+            return jsonify({'success': False, 'message': 'Only .md files allowed'}), 400
+        
+        # 保存到 docsify_site 目录
+        target_path = CONTENT_DIR / filename
+        
+        # 备份原文件
+        if target_path.exists():
+            backup_path = target_path.with_suffix(f'.md.bak.{int(time.time())}')
+            shutil.copy2(target_path, backup_path)
+        
+        # 保存新内容
+        target_path.write_text(content, encoding='utf-8')
+        
+        return jsonify({
+            'success': True,
+            'message': f'File saved: {filename}'
+        })
+    
+    except Exception as e:
+        return jsonify({
+            'success': False,
+            'message': f'Save failed: {str(e)}'
+        }), 500
+
+@app.route('/export-site', methods=['POST'])
+def export_site():
+    """
+    导出纯净的只读 Docsify 站点
+    
+    工作流程：
+    1. 扫描所有 .md 文件，提取使用的图片引用
+    2. 复制必要文件到临时目录
+    3. 只复制被引用的图片
+    4. 移除编辑功能相关代码
+    5. 打包成 ZIP
+    
+    返回：ZIP 文件下载
+    """
+    try:
+        # 创建临时导出目录
+        export_dir = OUTPUT_DIR / f'export_{int(time.time())}'
+        export_dir.mkdir(parents=True, exist_ok=True)
+        
+        # 收集所有使用的图片路径
+        used_images = set()
+        
+        # 扫描所有 .md 文件（包括子目录）
+        all_md_files = list(DOCSIFY_SITE.rglob('*.md'))
+        
+        # 正则匹配各种可能的图片引用格式
+        # 注意：经过生成器处理后，所有路径应该都是 assets/... 格式
+        # 但为了兼容性，仍然匹配多种格式
+        patterns = [
+            re.compile(r'!\[.*?\]\(((?:\.\./)*assets/[^)]+)\)'),  # Markdown: ![](../assets/... 或 assets/...)
+            re.compile(r'!\[.*?\]\((/assets/[^)]+)\)'),            # Markdown: ![](/assets/...)
+            re.compile(r'src="((?:\.\./)*assets/[^"]+)"'),         # HTML: src="../assets/..." 或 src="assets/..."
+            re.compile(r'src="(/assets/[^"]+)"'),                  # HTML: src="/assets/..."
+            re.compile(r"src='((?:\.\./)*assets/[^']+)'"),         # HTML: src='../assets/...' 或 src='assets/...'
+            re.compile(r"src='(/assets/[^']+)'"),                  # HTML: src='/assets/...'
+            re.compile(r'url\(((?:\.\./)*assets/[^)]+)\)'),        # CSS: url(../assets/... 或 assets/...)
+        ]
+        
+        # 扫描所有 markdown 文件
+        for md_file in all_md_files:
+            try:
+                content = md_file.read_text(encoding='utf-8')
+                for pattern in patterns:
+                    for match in pattern.finditer(content):
+                        img_path = match.group(1)
+                        # 清理路径中的引号
+                        img_path = img_path.strip('\'"')
+                        # 规范化路径：移除 ../ 和 / 前缀，统一为 assets/...
+                        img_path = re.sub(r'^(?:\.\./)+', '', img_path)  # 移除 ../
+                        img_path = re.sub(r'^\./', '', img_path)          # 移除 ./
+                        img_path = re.sub(r'^/', '', img_path)            # 移除 /
+                        used_images.add(img_path)
+            except Exception as e:
+                print(f'Warning: Failed to read {md_file}: {e}')
+        
+        # 同样扫描 index.html
+        index_html = DOCSIFY_SITE / 'index.html'
+        if index_html.exists():
+            try:
+                content = index_html.read_text(encoding='utf-8')
+                for pattern in patterns:
+                    for match in pattern.finditer(content):
+                        img_path = match.group(1).strip('\'"')
+                        # 规范化路径
+                        img_path = re.sub(r'^(?:\.\./)+', '', img_path)
+                        img_path = re.sub(r'^\./', '', img_path)
+                        img_path = re.sub(r'^/', '', img_path)
+                        used_images.add(img_path)
+            except Exception as e:
+                print(f'Warning: Failed to read index.html: {e}')
+        
+        print(f'Found {len(used_images)} used images in {len(all_md_files)} files')
+        
+        # 复制必要文件
+        files_to_copy = [
+            'index.html',
+            '_sidebar.md',
+            '_navbar.md',
+            'README.md'
+        ]
+        
+        for filename in files_to_copy:
+            src = DOCSIFY_SITE / filename
+            if src.exists():
+                dst = export_dir / filename
+                if filename == 'index.html':
+                    # 移除编辑器相关代码
+                    content = src.read_text(encoding='utf-8')
+                    # 移除编辑器 JS 引用
+                    content = re.sub(r'<script src="docsify-editor\.js"></script>', '', content)
+                    # 移除编辑按钮容器
+                    content = re.sub(r'<div id="docsify-edit-button"></div>', '', content)
+                    # 移除导出按钮容器
+                    content = re.sub(r'<div id="docsify-export-button"></div>', '', content)
+                    dst.write_text(content, encoding='utf-8')
+                else:
+                    shutil.copy2(src, dst)
+        
+        # 复制所有 .md 文件（使用 all_md_files 而不是 md_files）
+        for md_file in all_md_files:
+            if md_file.name not in ['_sidebar.md', '_navbar.md', 'README.md']:
+                relative_path = md_file.relative_to(DOCSIFY_SITE)
+                dst_file = export_dir / relative_path
+                dst_file.parent.mkdir(parents=True, exist_ok=True)
+                shutil.copy2(md_file, dst_file)
+        
+        # 只复制被使用的图片
+        for img_path in used_images:
+            src_img = DOCSIFY_SITE / img_path
+            if src_img.exists():
+                dst_img = export_dir / img_path
+                dst_img.parent.mkdir(parents=True, exist_ok=True)
+                shutil.copy2(src_img, dst_img)
+        
+        # 打包成 ZIP
+        zip_path = OUTPUT_DIR / f'docsify_site_export_{int(time.time())}.zip'
+        with zipfile.ZipFile(zip_path, 'w', zipfile.ZIP_DEFLATED) as zipf:
+            for file in export_dir.rglob('*'):
+                if file.is_file():
+                    arcname = file.relative_to(export_dir)
+                    zipf.write(file, arcname)
+        
+        # 清理临时目录
+        shutil.rmtree(export_dir)
+        
+        # 返回 ZIP 文件
+        return send_file(
+            zip_path,
+            as_attachment=True,
+            download_name=f'docsify_site_{int(time.time())}.zip',
+            mimetype='application/zip'
+        )
+    
+    except Exception as e:
+        return jsonify({
+            'success': False,
+            'message': f'Export failed: {str(e)}'
+        }), 500
+
 @app.route('/health', methods=['GET'])
 def health():
     """健康检查"""
-    return jsonify({'status': 'running', 'service': 'image-upload'})
+    return jsonify({'status': 'running', 'service': 'file-service'})
 
 if __name__ == '__main__':
     print('=' * 60)
-    print('Image Upload Service')
+    print('ForgeNote File Service')
     print('=' * 60)
+    print(f'Content Directory: {CONTENT_DIR}')
     print(f'Assets Directory: {ASSETS_DIR}')
     print('Listening on: http://localhost:8001')
     print('Endpoints:')
-    print('  POST /upload-image  - Upload image')
-    print('  GET  /health        - Health check')
+    print('  POST /upload-image   - Upload image')
+    print('  POST /save-markdown  - Save markdown file')
+    print('  POST /export-site    - Export clean site (ZIP)')
+    print('  GET  /health         - Health check')
     print('=' * 60)
     print('Press Ctrl+C to stop')
     print()

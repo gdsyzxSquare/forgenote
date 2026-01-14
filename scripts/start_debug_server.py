@@ -127,8 +127,8 @@ def start_docsify_service():
     return process
 
 def start_image_upload_service():
-    """启动图片上传服务"""
-    print('[3/4] Starting image upload service...')
+    """启动文件服务（图片上传、保存、导出）"""
+    print('[3/4] Starting file service...')
     print('  URL: http://localhost:8001')
     
     service_script = BASE_DIR / 'scripts' / 'image_upload_service.py'
@@ -146,8 +146,8 @@ def start_image_upload_service():
         bufsize=1
     )
     
-    processes.append(('Image Upload', process))
-    print('  ✓ Image upload service started')
+    processes.append(('File Service', process))
+    print('  ✓ File service started')
     print()
     
     return process
@@ -167,14 +167,16 @@ def print_summary():
     print('=' * 70)
     print()
     print('  📚 Docsify Documentation:  http://localhost:3000')
-    print('  🖼️  Image Upload Service:   http://localhost:8001')
+    print('  � File Service:           http://localhost:8001')
     print()
     print('=' * 70)
     print()
     print('Usage:')
     print('  1. Open http://localhost:3000 in browser')
-    print('  2. Click "✏️ Edit" button to enter edit mode')
-    print('  3. Click "🖼️ Upload Image" to add images')
+    print('  2. Click "✏️ Edit" to edit markdown files')
+    print('  3. Click "💾 Save" to save changes')
+    print('  4. Click "🖼️ Upload Image" to add images')
+    print('  5. Click "📦 Export Site" to download clean site')
     print()
     print('Press Ctrl+C to stop all services')
     print('=' * 70)
@@ -228,7 +230,7 @@ def main():
     
     # 启动输出监控线程
     Thread(target=monitor_output, args=('Docsify', docsify_process), daemon=True).start()
-    Thread(target=monitor_output, args=('Upload', image_upload_process), daemon=True).start()
+    Thread(target=monitor_output, args=('FileService', image_upload_process), daemon=True).start()
     
     # 保持运行
     try:

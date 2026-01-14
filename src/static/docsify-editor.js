@@ -28,6 +28,9 @@
     // 创建编辑按钮
     createEditButton();
     
+    // 创建导出按钮
+    createExportButton();
+    
     // 创建编辑器容器
     createEditorContainer();
     
@@ -56,6 +59,42 @@
     document.body.appendChild(btn);
   }
 
+  // 创建导出按钮
+  function createExportButton() {
+    const btn = document.createElement('button');
+    btn.className = 'docsify-export-btn';
+    btn.textContent = '📦 Export Site';
+    btn.onclick = exportSite;
+    btn.style.cssText = `
+      position: fixed;
+      bottom: 20px;
+      right: 20px;
+      padding: 12px 24px;
+      background: #42b983;
+      color: white;
+      border: none;
+      border-radius: 25px;
+      cursor: pointer;
+      font-size: 14px;
+      font-weight: 500;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.2);
+      z-index: 99;
+      transition: all 0.3s ease;
+    `;
+    
+    btn.onmouseover = () => {
+      btn.style.transform = 'translateY(-2px)';
+      btn.style.boxShadow = '0 4px 12px rgba(0,0,0,0.3)';
+    };
+    
+    btn.onmouseout = () => {
+      btn.style.transform = 'translateY(0)';
+      btn.style.boxShadow = '0 2px 8px rgba(0,0,0,0.2)';
+    };
+    
+    document.body.appendChild(btn);
+  }
+
   // 创建编辑器容器
   function createEditorContainer() {
     const container = document.createElement('div');
@@ -69,11 +108,8 @@
           <button onclick="docsifyEditor.uploadImage()">
             🖼️ Upload Image
           </button>
-          <button onclick="docsifyEditor.copyToClipboard()">
-            📋 Copy Markdown
-          </button>
-          <button onclick="docsifyEditor.downloadMarkdown()">
-            💾 Download .md
+          <button onclick="docsifyEditor.saveMarkdown()" style="background: #28a745; color: white;">
+            💾 Save
           </button>
           <button class="danger" onclick="docsifyEditor.exitEditMode()">
             ❌ Exit
@@ -930,58 +966,142 @@
     input.click();
   }
 
-  // 复制到剪贴板
-  function copyToClipboard() {
+  // 保存 Markdown 到本地文件
+  async function saveMarkdown() {
+    const SERVICE_URL = 'http://localhost:8001';
     const textarea = document.getElementById('docsify-markdown-editor');
     const content = textarea.value;
+    const filename = editorState.currentFile || 'README.md';
     
-    if (navigator.clipboard && navigator.clipboard.writeText) {
-      navigator.clipboard.writeText(content)
-        .then(() => {
-          showToast('✅ Copied to clipboard!', 'success');
-        })
-        .catch(err => {
-          console.error('Failed to copy:', err);
-          fallbackCopy(textarea);
-        });
-    } else {
-      fallbackCopy(textarea);
+    // 检查是否有修改
+    if (content === editorState.originalContent) {
+      showToast('ℹ️ No changes to save', 'info');
+      return;
     }
-  }
-
-  // 降级复制方法
-  function fallbackCopy(textarea) {
-    textarea.select();
+    
     try {
-      document.execCommand('copy');
-      showToast('✅ Copied to clipboard!', 'success');
-    } catch (err) {
-      showToast('❌ Copy failed. Please manually select and copy.', 'error');
+      // 检查服务
+      const healthCheck = await fetch(`${SERVICE_URL}/health`, {
+        signal: AbortSignal.timeout(2000)
+      });
+      if (!healthCheck.ok) throw new Error('Service not available');
+    } catch (error) {
+      showToast(
+        '❌ Local File Service Not Running\n\n' +
+        'Please start debug server first:\n' +
+        'python scripts/start_debug_server.py',
+        'error',
+        5000
+      );
+      return;
+    }
+    
+    showToast('⏳ Saving file...', 'info');
+    
+    try {
+      const response = await fetch(`${SERVICE_URL}/save-markdown`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          filename: filename,
+          content: content
+        })
+      });
+      
+      const result = await response.json();
+      
+      if (!result.success) {
+        throw new Error(result.message || 'Save failed');
+      }
+      
+      // 更新原始内容状态
+      editorState.originalContent = content;
+      
+      showToast(
+        `✅ File saved successfully!\n📁 ${filename}`,
+        'success',
+        3000
+      );
+      
+      console.log('✓ File saved:', filename);
+      
+    } catch (error) {
+      showToast('❌ Save failed: ' + error.message, 'error');
+      console.error('Save error:', error);
     }
   }
 
-  // 下载 Markdown 文件
-  function downloadMarkdown() {
-    const textarea = document.getElementById('docsify-markdown-editor');
-    const content = textarea.value;
-    const filename = editorState.currentFile || 'document.md';
+  // 导出纯净站点
+  async function exportSite() {
+    const SERVICE_URL = 'http://localhost:8001';
     
-    // 创建 Blob
-    const blob = new Blob([content], { type: 'text/markdown;charset=utf-8' });
-    const url = URL.createObjectURL(blob);
+    const confirmed = confirm(
+      'Export Clean Docsify Site\n\n' +
+      'This will create a read-only version of the site with:\n' +
+      '✓ All markdown files\n' +
+      '✓ Only used images (referenced in .md files)\n' +
+      '✓ No editing features\n\n' +
+      'Export now?'
+    );
     
-    // 创建下载链接
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = filename.replace('.md', '_edited.md');
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
+    if (!confirmed) return;
     
-    // 释放 URL
-    URL.revokeObjectURL(url);
+    try {
+      // 检查服务
+      const healthCheck = await fetch(`${SERVICE_URL}/health`, {
+        signal: AbortSignal.timeout(2000)
+      });
+      if (!healthCheck.ok) throw new Error('Service not available');
+    } catch (error) {
+      showToast(
+        '❌ Local File Service Not Running\n\n' +
+        'Please start debug server first:\n' +
+        'python scripts/start_debug_server.py',
+        'error',
+        5000
+      );
+      return;
+    }
     
-    showToast('✅ Downloaded: ' + a.download, 'success');
+    showToast('⏳ Exporting site... This may take a moment.', 'info', 10000);
+    
+    try {
+      const response = await fetch(`${SERVICE_URL}/export-site`, {
+        method: 'POST'
+      });
+      
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.message || 'Export failed');
+      }
+      
+      // 获取 ZIP 文件
+      const blob = await response.blob();
+      const url = window.URL.createObjectURL(blob);
+      
+      // 触发下载
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `docsify_site_${Date.now()}.zip`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      window.URL.revokeObjectURL(url);
+      
+      showToast(
+        '✅ Site exported successfully!\n📦 ZIP file downloaded',
+        'success',
+        4000
+      );
+      
+      console.log('✓ Site exported successfully');
+      
+    } catch (error) {
+      showToast('❌ Export failed: ' + error.message, 'error', 5000);
+      console.error('Export error:', error);
+    }
   }
 
   // 显示提示消息
@@ -1025,8 +1145,8 @@
     exitEditMode,
     toggleEditMode,
     uploadImage,
-    copyToClipboard,
-    downloadMarkdown,
+    saveMarkdown,
+    exportSite,
     showToast
   };
 

@@ -5,6 +5,7 @@ Docsify站点生成器 - 简化版
 """
 from pathlib import Path
 import shutil
+import re
 from typing import Dict, List
 
 
@@ -232,7 +233,7 @@ This documentation is automatically generated from course materials.
         print("✓ 生成 README.md")
     
     def _copy_content_files(self, content_dir: Path, output_dir: Path):
-        """复制内容文件"""
+        """复制内容文件并规范化图片路径"""
         if not content_dir.exists():
             print(f"警告: 内容目录不存在 {content_dir}")
             return
@@ -242,13 +243,60 @@ This documentation is automatically generated from course materials.
             if f.name not in ["_sidebar.md", "_navbar.md", "README.md"]:
                 f.unlink()
         
-        # 复制新的章节文件
+        # 复制新的章节文件并规范化图片路径
         copied = 0
         for md_file in content_dir.glob("*.md"):
-            shutil.copy2(md_file, output_dir / md_file.name)
+            # 读取文件内容
+            content = md_file.read_text(encoding='utf-8')
+            
+            # 规范化图片路径：统一转换为 assets/... 格式
+            # 处理各种可能的相对路径格式
+            content = self._normalize_image_paths(content)
+            
+            # 写入到输出目录
+            (output_dir / md_file.name).write_text(content, encoding='utf-8')
             copied += 1
         
-        print(f"✓ 复制内容文件: {copied} 个")
+        print(f"✓ 复制内容文件: {copied} 个（已规范化图片路径）")
+    
+    def _normalize_image_paths(self, content: str) -> str:
+        """
+        规范化 Markdown 中的图片路径
+        
+        将以下格式统一转换为 assets/...：
+        - ../assets/...
+        - ./assets/...
+        - ../../assets/...
+        - /assets/...
+        
+        Args:
+            content: Markdown 内容
+            
+        Returns:
+            规范化后的内容
+        """
+        # 匹配 markdown 图片语法和 HTML img 标签
+        patterns = [
+            # Markdown: ![alt](path)
+            (r'!\[([^\]]*)\]\((\.\./)*assets/([^)]+)\)', r'![\1](assets/\3)'),
+            (r'!\[([^\]]*)\]\((\./)*assets/([^)]+)\)', r'![\1](assets/\3)'),
+            (r'!\[([^\]]*)\]\(/assets/([^)]+)\)', r'![\1](assets/\2)'),
+            
+            # HTML: <img src="path">
+            (r'<img\s+([^>]*)src="(\.\./)*assets/([^"]+)"', r'<img \1src="assets/\3"'),
+            (r'<img\s+([^>]*)src="(\./)*assets/([^"]+)"', r'<img \1src="assets/\3"'),
+            (r'<img\s+([^>]*)src="/assets/([^"]+)"', r'<img \1src="assets/\2"'),
+            
+            # HTML: <img src='path'>
+            (r"<img\s+([^>]*)src='(\.\./)*assets/([^']+)'", r"<img \1src='assets/\3'"),
+            (r"<img\s+([^>]*)src='(\./)*assets/([^']+)'", r"<img \1src='assets/\3'"),
+            (r"<img\s+([^>]*)src='/assets/([^']+)'", r"<img \1src='assets/\2'"),
+        ]
+        
+        for pattern, replacement in patterns:
+            content = re.sub(pattern, replacement, content)
+        
+        return content
     
     def _copy_assets(self, assets_dir: Path, output_dir: Path):
         """
