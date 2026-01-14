@@ -55,6 +55,25 @@ ForgeNote 是一个智能化的课程文档处理系统，旨在解决高校教�
 - Node.js 14+（用于运行 Docsify）
 - MinerU（用于 PPT/PDF 转换）
 
+### 一键调试模式（推荐）
+
+**最快启动方式：双击运行**
+
+Windows 用户直接双击项目根目录的 `start_debug.bat`
+
+或在任意平台运行：
+```bash
+python scripts/start_debug_server.py
+```
+
+这会自动启动：
+- 📚 Docsify 文档服务 (http://localhost:3000)
+- 🖼️ 图片上传服务 (http://localhost:8001)
+
+打开浏览器访问 http://localhost:3000 即可开始编辑！
+
+> 📖 详细说明：[调试服务使用指南](docs/DEBUG_SERVER_GUIDE.md)
+
 ### MinerU 输出结构说明
 
 ForgeNote 支持 MinerU 的标准输出格式，每个转换的文件对应一个文件夹：

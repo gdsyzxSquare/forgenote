@@ -362,6 +362,33 @@
 }
 
 /* 图片块特殊样式 */
+.md-block img {
+  display: block;
+  max-width: 100%;
+  height: auto;
+  border-radius: 4px;
+}
+
+.md-block:has(img) {
+  display: inline-block;
+  padding: 4px;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: all 0.3s ease;
+}
+
+.md-block:has(img):hover {
+  background: #f8f9fa;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+}
+
+.md-block:has(img).preview-highlight-active {
+  background: #e6f7ff !important;
+  border: 2px solid #1890ff;
+  box-shadow: 0 0 10px rgba(24, 144, 255, 0.3);
+}
+
+/* 兼容旧样式类名 */
 .md-image-block {
   display: inline-block;
   padding: 4px;

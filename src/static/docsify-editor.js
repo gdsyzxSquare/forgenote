@@ -66,6 +66,9 @@
           Editing: <span id="editor-filename">Current Page</span>
         </div>
         <div class="docsify-editor-actions">
+          <button onclick="docsifyEditor.uploadImage()">
+            🖼️ Upload Image
+          </button>
           <button onclick="docsifyEditor.copyToClipboard()">
             📋 Copy Markdown
           </button>
@@ -438,11 +441,21 @@
     textarea.focus();
     textarea.setSelectionRange(startOffset, endOffset);
     
-    // 滚动到可见区域（估算）
-    const avgLineLength = 50;
-    const lineNumber = Math.floor(startOffset / avgLineLength);
-    const lineHeight = 20;
-    textarea.scrollTop = lineNumber * lineHeight - textarea.clientHeight / 3;
+    // 滚动使选中文本居中显示
+    // 使用内容比例而非行数估算，更准确
+    setTimeout(() => {
+      const content = textarea.value;
+      const contentLength = content.length;
+      
+      if (contentLength > 0) {
+        // 计算选中位置在整个内容中的比例
+        const ratio = startOffset / contentLength;
+        // 根据比例计算应该滚动到的位置
+        const targetScrollTop = ratio * textarea.scrollHeight - textarea.clientHeight / 2;
+        // 确保不会滚动到负数或超出范围
+        textarea.scrollTop = Math.max(0, Math.min(targetScrollTop, textarea.scrollHeight - textarea.clientHeight));
+      }
+    }, 0);
 
     // 添加高亮样式（临时）
     textarea.classList.add('editor-highlight-active');
@@ -458,6 +471,7 @@
    */
   function setupEditorClickLink() {
     const textarea = document.getElementById('docsify-markdown-editor');
+    console.log('setupEditorClickLink: textarea found?', !!textarea);
     if (!textarea) return;
 
     textarea.addEventListener('click', function(e) {
@@ -465,6 +479,8 @@
       console.log('→ Editor clicked at offset:', offset);
       highlightPreviewBlock(offset);
     });
+    
+    console.log('✓ Editor click listener attached');
   }
 
   /**
@@ -472,21 +488,32 @@
    */
   function setupPreviewClickLink() {
     const preview = document.getElementById('docsify-preview-content');
+    console.log('setupPreviewClickLink: preview found?', !!preview);
     if (!preview) return;
 
     preview.addEventListener('click', function(e) {
+      console.log('Preview clicked, target:', e.target.tagName);
+      
       // 查找最近的带 data-source-start 的元素
       const element = e.target.closest('[data-source-start]');
+      console.log('Found element with data-source-start?', !!element);
+      
       if (!element) return;
 
       const start = parseInt(element.getAttribute('data-source-start'));
       const end = parseInt(element.getAttribute('data-source-end'));
       
-      if (start !== null && end !== null) {
+      console.log(`Found span: [${start}-${end}]`);
+      
+      if (start !== null && end !== null && !isNaN(start) && !isNaN(end) && start > 0 && end > start) {
         console.log(`← Preview clicked: offset [${start}-${end}]`);
         highlightEditorRange(start, end);
+      } else {
+        console.warn(`Invalid span [${start}-${end}], skipping highlight`);
       }
     });
+    
+    console.log('✓ Preview click listener attached');
   }
 
   // ==================== 源码映射功能结束 ====================
@@ -510,11 +537,57 @@
         if (!raw) return { start: 0, end: 0 };
         
         // 从 cursorOffset 开始查找 raw
-        const index = sourceText.indexOf(raw, cursorOffset);
+        let index = sourceText.indexOf(raw, cursorOffset);
         
+        // 如果直接查找失败，尝试宽松匹配（可能是列表项、引用等）
         if (index === -1) {
-          console.warn(`⚠ Cannot find raw in source from offset ${cursorOffset}:`, raw.substring(0, 50));
-          return { start: cursorOffset, end: cursorOffset };
+          // 尝试在 raw 前添加常见的前缀
+          const prefixes = ['- ', '* ', '+ ', '> ', /\d+\. /];
+          
+          for (const prefix of prefixes) {
+            if (typeof prefix === 'string') {
+              const withPrefix = prefix + raw;
+              index = sourceText.indexOf(withPrefix, cursorOffset);
+              if (index !== -1) {
+                // 找到了，使用完整匹配（包含前缀）
+                const startOffset = index;
+                const endOffset = index + withPrefix.length;
+                cursorOffset = endOffset;
+                console.log(`✓ Span [${startOffset}-${endOffset}] (with prefix "${prefix}"): "${withPrefix.substring(0, 30).replace(/\n/g, '↵')}..."`);
+                return { start: startOffset, end: endOffset };
+              }
+            } else {
+              // 正则表达式：匹配数字列表
+              const match = sourceText.substring(cursorOffset).match(new RegExp(`(\\d+\\. )${raw.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}`));
+              if (match) {
+                const startOffset = cursorOffset + match.index;
+                const endOffset = startOffset + match[0].length;
+                cursorOffset = endOffset;
+                console.log(`✓ Span [${startOffset}-${endOffset}] (with numbered list): "${match[0].substring(0, 30).replace(/\n/g, '↵')}..."`);
+                return { start: startOffset, end: endOffset };
+              }
+            }
+          }
+          
+          // 仍然找不到，尝试部分匹配（前50个字符）
+          const shortRaw = raw.substring(0, 50);
+          index = sourceText.indexOf(shortRaw, cursorOffset);
+          
+          if (index !== -1) {
+            // 找到部分匹配，扩展到完整段落
+            const startOffset = index;
+            let endOffset = index + raw.length;
+            if (endOffset > sourceText.length) endOffset = sourceText.length;
+            
+            cursorOffset = endOffset;
+            console.log(`✓ Span [${startOffset}-${endOffset}] (partial match): "${raw.substring(0, 30).replace(/\n/g, '↵')}..."`);
+            return { start: startOffset, end: endOffset };
+          }
+          
+          // 完全找不到，前进一小段避免死循环
+          console.warn(`⚠ Cannot find raw, advancing cursor by 50. From offset ${cursorOffset}:`, raw.substring(0, 50));
+          cursorOffset += 50;
+          return { start: 0, end: 0 };
         }
         
         const startOffset = index;
@@ -545,6 +618,12 @@
       
       // 段落（通过文本内容在源码中查找）
       renderer.paragraph = function(text) {
+        // 检查是否只包含图片（已有 source span 的图片不需要再包装）
+        if (text.includes('class="md-block md-mappable"')) {
+          // 段落内已有图片容器，直接返回 <p> 标签，不额外包装
+          return `<p>${text}</p>`;
+        }
+        
         // 移除 HTML 标签获取纯文本
         const plainText = text.replace(/<[^>]*>/g, '');
         const raw = plainText; // 近似
@@ -599,10 +678,48 @@
         return wrapWithSourceSpan(html, raw);
       };
 
-      // 图片（不包裹，因为通常在段落内）
+      // 图片 - 单独包装以支持点击定位，使用 inline-block 避免影响布局
       renderer.image = function(href, title, text) {
         const titleAttr = title ? ` title="${title}"` : '';
-        return `<img src="${href}" alt="${text}"${titleAttr}>`;
+        const html = `<img src="${href}" alt="${text}"${titleAttr}>`;
+        
+        // 尝试构造多种可能的 raw 格式
+        const rawVariants = [
+          title ? `![${text}](${href} "${title}")` : null,
+          title ? `![${text}](${href} '${title}')` : null,
+          `![${text}](${href})`,
+          // 编码的 URL
+          title ? `![${text}](${encodeURI(href)} "${title}")` : null,
+          `![${text}](${encodeURI(href)})`
+        ].filter(Boolean);
+        
+        // 尝试每种变体
+        for (const raw of rawVariants) {
+          const index = sourceText.indexOf(raw, cursorOffset);
+          if (index !== -1) {
+            cursorOffset = index + raw.length;
+            console.log(`✓ Image found at [${index}-${cursorOffset}]:`, raw.substring(0, 30));
+            // 使用 inline-block 包装，不影响段落内流式布局
+            return `<span class="md-block md-mappable" data-source-start="${index}" data-source-end="${cursorOffset}" style="display: inline-block;">${html}</span>`;
+          }
+        }
+        
+        // 如果找不到精确匹配，尝试查找 ![text] 开头
+        const partialPattern = `![${text}]`;
+        const partialIndex = sourceText.indexOf(partialPattern, cursorOffset);
+        if (partialIndex !== -1) {
+          const remaining = sourceText.substring(partialIndex);
+          const match = remaining.match(/!\[.+?\]\(.+?\)/);
+          if (match) {
+            const endOffset = partialIndex + match[0].length;
+            cursorOffset = endOffset;
+            console.log(`✓ Image found (pattern match) at [${partialIndex}-${endOffset}]:`, match[0]);
+            return `<span class="md-block md-mappable" data-source-start="${partialIndex}" data-source-end="${endOffset}" style="display: inline-block;">${html}</span>`;
+          }
+        }
+        
+        console.warn(`⚠ Cannot find image in source: ![${text}](${href})`);
+        return `<span class="md-block md-mappable" data-source-start="0" data-source-end="0" style="display: inline-block;">${html}</span>`;
       };
 
       const html = window.marked.parse(markdown, { renderer });
@@ -625,6 +742,192 @@
       // 降级：纯文本显示
       preview.innerHTML = `<pre>${escapeHtml(markdown)}</pre>`;
     }
+  }
+
+
+  
+  // 上传图片
+  async function uploadImage() {
+    // 检查本地服务是否运行
+    const SERVICE_URL = 'http://localhost:8001';
+    
+    try {
+      const healthCheck = await fetch(`${SERVICE_URL}/health`, {
+        signal: AbortSignal.timeout(2000)
+      });
+      if (!healthCheck.ok) throw new Error('Service not available');
+    } catch (error) {
+      const useService = confirm(
+        'Local Image Upload Service Not Running\n\n' +
+        'To upload images directly:\n' +
+        '1. Make sure debug server is running\n' +
+        '2. Or run: python scripts/image_upload_service.py\n\n' +
+        'Click OK to use fallback mode (manual download)'
+      );
+      
+      if (useService) {
+        uploadImageFallback();
+      }
+      return;
+    }
+    
+    // 创建文件选择器
+    const input = document.createElement('input');
+    input.type = 'file';
+    input.accept = 'image/*';
+    input.multiple = false;
+    
+    input.onchange = async (e) => {
+      const file = e.target.files[0];
+      if (!file) return;
+      
+      // 验证文件类型
+      if (!file.type.startsWith('image/')) {
+        showToast('❌ Please select an image file', 'error');
+        return;
+      }
+      
+      // 验证文件大小（最大 10MB）
+      if (file.size > 10 * 1024 * 1024) {
+        showToast('❌ Image too large (max 10MB)', 'error');
+        return;
+      }
+      
+      showToast('⏳ Uploading image...', 'info');
+      
+      try {
+        // 获取当前文档名称
+        const currentFile = editorState.currentFile || 'README.md';
+        const fileName = currentFile.includes('/') ? currentFile.split('/').pop() : currentFile;
+        const documentName = fileName.replace(/\.md$/, '');
+        
+        // 构建 FormData
+        const formData = new FormData();
+        formData.append('file', file);
+        formData.append('document', documentName);
+        
+        // 上传到本地服务
+        const response = await fetch(`${SERVICE_URL}/upload-image`, {
+          method: 'POST',
+          body: formData
+        });
+        
+        const result = await response.json();
+        
+        if (!result.success) {
+          throw new Error(result.message || 'Upload failed');
+        }
+        
+        // 生成 markdown 链接
+        const markdown = `![${file.name}](${result.path})`;
+        
+        // 复制到剪贴板
+        await navigator.clipboard.writeText(markdown);
+        
+        // 自动插入到编辑器光标位置
+        const textarea = document.getElementById('docsify-markdown-editor');
+        if (textarea) {
+          const cursorPos = textarea.selectionStart;
+          const textBefore = textarea.value.substring(0, cursorPos);
+          const textAfter = textarea.value.substring(cursorPos);
+          
+          // 插入时添加换行以保持格式整洁
+          const needsNewlineBefore = textBefore && !textBefore.endsWith('\n');
+          const needsNewlineAfter = textAfter && !textAfter.startsWith('\n');
+          
+          textarea.value = textBefore + 
+            (needsNewlineBefore ? '\n' : '') + 
+            markdown + 
+            (needsNewlineAfter ? '\n' : '') + 
+            textAfter;
+          
+          // 更新光标位置
+          const newCursorPos = cursorPos + (needsNewlineBefore ? 1 : 0) + markdown.length;
+          textarea.setSelectionRange(newCursorPos, newCursorPos);
+          textarea.focus();
+          
+          // 更新预览
+          updatePreview();
+        }
+        
+        showToast(
+          `✅ Image uploaded!\n📁 ${result.path}`,
+          'success',
+          3000
+        );
+        
+        console.log('✓ Image uploaded:', result.path);
+        
+      } catch (error) {
+        showToast('❌ Upload failed: ' + error.message, 'error');
+        console.error('Upload error:', error);
+      }
+    };
+    
+    // 触发文件选择
+    input.click();
+  }
+  
+  // 降级方案：自动下载（不支持 File System Access API 的浏览器）
+  function uploadImageFallback() {
+    const input = document.createElement('input');
+    input.type = 'file';
+    input.accept = 'image/*';
+    input.multiple = false;
+    
+    input.onchange = async (e) => {
+      const file = e.target.files[0];
+      if (!file) return;
+      
+      if (!file.type.startsWith('image/')) {
+        showToast('❌ Please select an image file', 'error');
+        return;
+      }
+      
+      if (file.size > 10 * 1024 * 1024) {
+        showToast('❌ Image too large (max 10MB)', 'error');
+        return;
+      }
+      
+      const timestamp = Date.now();
+      const ext = file.name.split('.').pop();
+      const newFilename = `image_${timestamp}.${ext}`;
+      
+      const currentFile = editorState.currentFile || 'README.md';
+      // 提取文件名（移除路径前缀）
+      const fileName = currentFile.includes('/') ? currentFile.split('/').pop() : currentFile;
+      // 移除 .md 后缀，保留完整文件名（包括 UUID）
+      const baseName = fileName.replace(/\.md$/, '');
+      
+      // 降级模式：使用 baseName 作为目录名（可能不准确，建议先授权）
+      const targetPath = `assets/${baseName}/images/${newFilename}`;
+      console.warn('Fallback mode: path may be incorrect:', targetPath);
+      const markdown = `![${file.name}](${targetPath})`;
+      
+      // 触发下载
+      const blob = new Blob([file], { type: file.type });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = newFilename;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+      
+      await navigator.clipboard.writeText(markdown);
+      
+      showToast(
+        `✅ Image downloaded!\n📋 Link copied\n📁 Move to: ${targetPath}`,
+        'success',
+        5000
+      );
+      
+      console.log('✓ Image downloaded (fallback mode)');
+      console.log('- Target:', targetPath);
+    };
+    
+    input.click();
   }
 
   // 复制到剪贴板
@@ -682,14 +985,15 @@
   }
 
   // 显示提示消息
-  function showToast(message, type = 'success') {
+  function showToast(message, type = 'info', duration = 3000) {
     const toast = document.getElementById('editor-toast');
-    toast.textContent = message;
+    // 支持多行文本（\n 转换为 <br>）
+    toast.innerHTML = message.replace(/\n/g, '<br>');
     toast.className = 'docsify-editor-toast show ' + type;
     
     setTimeout(() => {
       toast.classList.remove('show');
-    }, 3000);
+    }, duration);
   }
 
   // 防抖函数
@@ -720,6 +1024,7 @@
     enterEditMode,
     exitEditMode,
     toggleEditMode,
+    uploadImage,
     copyToClipboard,
     downloadMarkdown,
     showToast
