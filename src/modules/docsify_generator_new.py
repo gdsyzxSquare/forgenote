@@ -55,6 +55,9 @@ class DocsifyGenerator:
         if assets_dir and assets_dir.exists():
             self._copy_assets(assets_dir, output_dir)
         
+        # 7. 复制编辑器插件文件
+        self._copy_editor_plugin(output_dir)
+        
         print(f"\n✓ Docsify站点生成完成: {output_dir}")
     
     def _generate_index_html(self, course_name: str, output_dir: Path):
@@ -183,6 +186,10 @@ class DocsifyGenerator:
       }});
     }});
   </script>
+  
+  <!-- Docsify Editor Plugin -->
+  <link rel="stylesheet" href="docsify-editor.css">
+  <script src="docsify-editor.js"></script>
 </body>
 </html>
 """
@@ -279,6 +286,31 @@ This documentation is automatically generated from course materials.
         # 统计文件数
         file_count = sum(1 for _ in dest_assets.rglob("*") if _.is_file())
         print(f"✓ 复制资源文件: {file_count} 个")
+    
+    def _copy_editor_plugin(self, output_dir: Path):
+        """
+        复制编辑器插件文件到站点目录
+        
+        Args:
+            output_dir: 输出目录（docsify_site）
+        """
+        # 获取静态文件目录
+        static_dir = Path(__file__).parent.parent / "static"
+        
+        editor_css = static_dir / "docsify-editor.css"
+        editor_js = static_dir / "docsify-editor.js"
+        
+        if editor_css.exists():
+            shutil.copy2(editor_css, output_dir / "docsify-editor.css")
+            print("✓ 复制编辑器样式文件")
+        else:
+            print("⚠️  警告: 编辑器CSS文件不存在")
+        
+        if editor_js.exists():
+            shutil.copy2(editor_js, output_dir / "docsify-editor.js")
+            print("✓ 复制编辑器脚本")
+        else:
+            print("⚠️  警告: 编辑器JS文件不存在")
     
     def preview_site(self, output_dir: Path, port: int = 3000):
         """

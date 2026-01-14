@@ -1,0 +1,322 @@
+/* Docsify 编辑器样式 */
+
+/* 编辑按钮 */
+.docsify-edit-btn {
+  position: fixed;
+  top: 80px;
+  right: 20px;
+  z-index: 99;
+  padding: 10px 20px;
+  background: #42b983;
+  color: white;
+  border: none;
+  border-radius: 5px;
+  cursor: pointer;
+  font-size: 14px;
+  font-weight: 500;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
+  transition: all 0.3s ease;
+}
+
+.docsify-edit-btn:hover {
+  background: #33a06f;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
+  transform: translateY(-2px);
+}
+
+.docsify-edit-btn.edit-mode {
+  background: #f66;
+}
+
+.docsify-edit-btn.edit-mode:hover {
+  background: #e55;
+}
+
+/* 编辑器容器 */
+.docsify-editor-container {
+  display: none;
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: white;
+  z-index: 9998;
+  overflow: hidden;
+}
+
+.docsify-editor-container.active {
+  display: flex;
+  flex-direction: column;
+}
+
+/* 编辑器顶部工具栏 */
+.docsify-editor-toolbar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 15px 20px;
+  background: #f8f9fa;
+  border-bottom: 1px solid #e1e4e8;
+  flex-shrink: 0;
+}
+
+.docsify-editor-title {
+  font-size: 16px;
+  font-weight: 600;
+  color: #333;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.docsify-editor-title::before {
+  content: "📝";
+  font-size: 20px;
+}
+
+.docsify-editor-actions {
+  display: flex;
+  gap: 10px;
+}
+
+.docsify-editor-actions button {
+  padding: 8px 16px;
+  border: 1px solid #d1d5da;
+  border-radius: 4px;
+  background: white;
+  color: #24292e;
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 500;
+  transition: all 0.2s ease;
+}
+
+.docsify-editor-actions button:hover {
+  background: #f6f8fa;
+  border-color: #959da5;
+}
+
+.docsify-editor-actions button.primary {
+  background: #28a745;
+  color: white;
+  border-color: #28a745;
+}
+
+.docsify-editor-actions button.primary:hover {
+  background: #218838;
+  border-color: #1e7e34;
+}
+
+.docsify-editor-actions button.danger {
+  background: #dc3545;
+  color: white;
+  border-color: #dc3545;
+}
+
+.docsify-editor-actions button.danger:hover {
+  background: #c82333;
+  border-color: #bd2130;
+}
+
+/* 编辑器主体 */
+.docsify-editor-body {
+  display: flex;
+  flex: 1;
+  overflow: hidden;
+}
+
+/* 左侧编辑区 */
+.docsify-editor-pane {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  border-right: 1px solid #e1e4e8;
+  overflow: hidden;
+}
+
+.docsify-editor-pane-header {
+  padding: 10px 15px;
+  background: #fafbfc;
+  border-bottom: 1px solid #e1e4e8;
+  font-size: 13px;
+  font-weight: 600;
+  color: #586069;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.docsify-editor-textarea {
+  flex: 1;
+  width: 100%;
+  padding: 20px;
+  border: none;
+  outline: none;
+  font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', 'Consolas', monospace;
+  font-size: 14px;
+  line-height: 1.6;
+  resize: none;
+  background: #ffffff;
+  color: #24292e;
+}
+
+/* 右侧预览区 */
+.docsify-editor-preview {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.docsify-editor-preview-content {
+  flex: 1;
+  padding: 20px 40px;
+  overflow-y: auto;
+  background: #ffffff;
+}
+
+/* 预览内容样式（复用 docsify 样式） */
+.docsify-editor-preview-content .markdown-section {
+  max-width: 800px;
+  margin: 0 auto;
+}
+
+.docsify-editor-preview-content h1,
+.docsify-editor-preview-content h2,
+.docsify-editor-preview-content h3,
+.docsify-editor-preview-content h4,
+.docsify-editor-preview-content h5,
+.docsify-editor-preview-content h6 {
+  margin: 1.5em 0 0.8em;
+  font-weight: 600;
+}
+
+.docsify-editor-preview-content h1 {
+  font-size: 2em;
+  border-bottom: 2px solid #e1e4e8;
+  padding-bottom: 0.3em;
+}
+
+.docsify-editor-preview-content h2 {
+  font-size: 1.5em;
+  border-bottom: 1px solid #e1e4e8;
+  padding-bottom: 0.3em;
+}
+
+.docsify-editor-preview-content code {
+  background: #f6f8fa;
+  padding: 0.2em 0.4em;
+  border-radius: 3px;
+  font-size: 0.9em;
+}
+
+.docsify-editor-preview-content pre {
+  background: #f6f8fa;
+  padding: 16px;
+  border-radius: 6px;
+  overflow-x: auto;
+}
+
+.docsify-editor-preview-content blockquote {
+  border-left: 4px solid #dfe2e5;
+  padding-left: 16px;
+  color: #6a737d;
+  margin: 16px 0;
+}
+
+.docsify-editor-preview-content img {
+  max-width: 100%;
+  border-radius: 4px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+}
+
+/* 提示消息 */
+.docsify-editor-toast {
+  position: fixed;
+  top: 80px;
+  right: 20px;
+  padding: 12px 20px;
+  background: #28a745;
+  color: white;
+  border-radius: 5px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+  z-index: 10000;
+  animation: slideInRight 0.3s ease;
+  display: none;
+}
+
+.docsify-editor-toast.show {
+  display: block;
+}
+
+.docsify-editor-toast.error {
+  background: #dc3545;
+}
+
+@keyframes slideInRight {
+  from {
+    transform: translateX(100%);
+    opacity: 0;
+  }
+  to {
+    transform: translateX(0);
+    opacity: 1;
+  }
+}
+
+/* 响应式设计 */
+@media (max-width: 768px) {
+  .docsify-editor-body {
+    flex-direction: column;
+  }
+  
+  .docsify-editor-pane {
+    border-right: none;
+    border-bottom: 1px solid #e1e4e8;
+    max-height: 40%;
+  }
+  
+  .docsify-editor-preview {
+    max-height: 60%;
+  }
+  
+  .docsify-edit-btn {
+    top: 10px;
+    right: 10px;
+    padding: 8px 16px;
+    font-size: 12px;
+  }
+  
+  .docsify-editor-toolbar {
+    padding: 10px 15px;
+    flex-wrap: wrap;
+    gap: 10px;
+  }
+  
+  .docsify-editor-actions {
+    flex-wrap: wrap;
+  }
+}
+
+/* 滚动条美化 */
+.docsify-editor-textarea::-webkit-scrollbar,
+.docsify-editor-preview-content::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+
+.docsify-editor-textarea::-webkit-scrollbar-track,
+.docsify-editor-preview-content::-webkit-scrollbar-track {
+  background: #f1f1f1;
+}
+
+.docsify-editor-textarea::-webkit-scrollbar-thumb,
+.docsify-editor-preview-content::-webkit-scrollbar-thumb {
+  background: #888;
+  border-radius: 5px;
+}
+
+.docsify-editor-textarea::-webkit-scrollbar-thumb:hover,
+.docsify-editor-preview-content::-webkit-scrollbar-thumb:hover {
+  background: #555;
+}
