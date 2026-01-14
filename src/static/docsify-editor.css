@@ -320,3 +320,61 @@
 .docsify-editor-preview-content::-webkit-scrollbar-thumb:hover {
   background: #555;
 }
+/* ==================== 源码映射联动高亮样式 ==================== */
+
+/* 编辑区高亮（选中文本时的临时效果） */
+.docsify-editor-textarea.editor-highlight-active {
+  background: linear-gradient(to right, #fff9e6 0%, white 10%);
+}
+
+/* 预览区块级元素基础样式 */
+.md-mappable {
+  cursor: pointer;
+  transition: all 0.3s ease;
+  border-left: 3px solid transparent;
+  padding-left: 8px;
+  margin-left: -11px;
+}
+
+.md-mappable:hover {
+  background: #f8f9fa;
+  border-left-color: #42b983;
+}
+
+/* 预览区高亮激活状态 */
+.preview-highlight-active {
+  background: #e6f7ff !important;
+  border-left-color: #1890ff !important;
+  box-shadow: 0 0 0 2px rgba(24, 144, 255, 0.2);
+  animation: highlight-pulse 0.5s ease;
+}
+
+@keyframes highlight-pulse {
+  0% {
+    transform: scale(1);
+  }
+  50% {
+    transform: scale(1.01);
+  }
+  100% {
+    transform: scale(1);
+  }
+}
+
+/* 图片块特殊样式 */
+.md-image-block {
+  display: inline-block;
+  padding: 4px;
+  border-radius: 4px;
+}
+
+.md-image-block img {
+  display: block;
+  max-width: 100%;
+  height: auto;
+}
+
+.md-image-block.preview-highlight-active {
+  border: 2px solid #1890ff;
+  box-shadow: 0 0 10px rgba(24, 144, 255, 0.3);
+}
