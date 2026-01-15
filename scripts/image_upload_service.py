@@ -111,13 +111,32 @@ def save_markdown():
         # 保存到 docsify_site 目录
         target_path = CONTENT_DIR / filename
         
-        # 备份原文件
+        # 备份原文件（只保留最近 3 个备份）
         if target_path.exists():
+            # 创建新备份
             backup_path = target_path.with_suffix(f'.md.bak.{int(time.time())}')
             shutil.copy2(target_path, backup_path)
+            
+            # 清理旧备份：只保留最新的 3 个
+            backup_pattern = target_path.stem + '.md.bak.*'
+            backup_files = sorted(
+                target_path.parent.glob(backup_pattern),
+                key=lambda p: p.stat().st_mtime,
+                reverse=True
+            )
+            # 删除超过 3 个的旧备份
+            for old_backup in backup_files[3:]:
+                old_backup.unlink()
+                print(f'Cleaned old backup: {old_backup.name}')
         
         # 保存新内容
         target_path.write_text(content, encoding='utf-8')
+        
+        # 更新 sidebar
+        try:
+            update_sidebar(filename, content)
+        except Exception as e:
+            print(f'Warning: Failed to update sidebar: {e}')
         
         return jsonify({
             'success': True,
@@ -129,6 +148,114 @@ def save_markdown():
             'success': False,
             'message': f'Save failed: {str(e)}'
         }), 500
+
+def extract_headings(content: str) -> list:
+    """
+    提取 Markdown 中的一级和二级标题
+    
+    Args:
+        content: Markdown 内容
+        
+    Returns:
+        [(level, title, anchor), ...] 
+        level: 1 或 2
+        title: 标题文本
+        anchor: 锚点 ID
+    """
+    headings = []
+    lines = content.split('\n')
+    
+    for line in lines:
+        line = line.strip()
+        
+        # 匹配 # 标题 或 ## 标题
+        if line.startswith('# ') and not line.startswith('## '):
+            # 一级标题
+            title = line[2:].strip()
+            # 生成锚点：转小写，空格转连字符，移除特殊字符
+            anchor = re.sub(r'[^\w\s-]', '', title.lower())
+            anchor = re.sub(r'[-\s]+', '-', anchor).strip('-')
+            headings.append((1, title, anchor))
+            
+        elif line.startswith('## '):
+            # 二级标题
+            title = line[3:].strip()
+            anchor = re.sub(r'[^\w\s-]', '', title.lower())
+            anchor = re.sub(r'[-\s]+', '-', anchor).strip('-')
+            headings.append((2, title, anchor))
+    
+    return headings
+
+def update_sidebar(filename: str, content: str):
+    """
+    更新 _sidebar.md 中对应文档的目录结构
+    
+    Args:
+        filename: 文件名（如 1_Introduction.md）
+        content: Markdown 内容
+    """
+    sidebar_path = DOCSIFY_SITE / '_sidebar.md'
+    
+    if not sidebar_path.exists():
+        print('Warning: _sidebar.md not found')
+        return
+    
+    # 提取标题
+    headings = extract_headings(content)
+    
+    if not headings:
+        print(f'No headings found in {filename}')
+        return
+    
+    # 读取当前 sidebar
+    sidebar_content = sidebar_path.read_text(encoding='utf-8')
+    lines = sidebar_content.split('\n')
+    
+    # 找到对应文档的起始行
+    doc_pattern = f'\\* \\[.*\\]\\({re.escape(filename)}'
+    doc_start = -1
+    
+    for i, line in enumerate(lines):
+        if re.search(doc_pattern, line):
+            doc_start = i
+            break
+    
+    if doc_start == -1:
+        print(f'Document {filename} not found in sidebar')
+        return
+    
+    # 找到下一个文档的起始行（或文件末尾）
+    # 注意：要找到下一个顶层的 "* [" 而不是缩进的 "  * ["
+    doc_end = len(lines)
+    for i in range(doc_start + 1, len(lines)):
+        line = lines[i]
+        # 只匹配顶层项（没有前导空格）
+        if line.startswith('* [') and not line.startswith('  '):
+            doc_end = i
+            break
+    
+    # 生成新的目录项
+    new_lines = []
+    
+    # 第一个一级标题作为文档标题
+    first_heading = headings[0]
+    new_lines.append(f'* [{first_heading[1]}]({filename})')
+    
+    # 后续标题作为子项
+    for level, title, anchor in headings[1:]:
+        # 所有后续标题都作为缩进子项
+        new_lines.append(f'  * [{title}]({filename}#{anchor})')
+    
+    # 替换 sidebar 中对应部分
+    # 在文档之间添加空行（如果不是最后一个文档）
+    if doc_end < len(lines):
+        updated_lines = lines[:doc_start] + new_lines + [''] + lines[doc_end:]
+    else:
+        updated_lines = lines[:doc_start] + new_lines
+    
+    # 写回 sidebar
+    sidebar_path.write_text('\n'.join(updated_lines), encoding='utf-8')
+    print(f'✓ Updated sidebar for {filename}')
 
 @app.route('/export-site', methods=['POST'])
 def export_site():
@@ -282,10 +409,11 @@ if __name__ == '__main__':
     print(f'Assets Directory: {ASSETS_DIR}')
     print('Listening on: http://localhost:8001')
     print('Endpoints:')
-    print('  POST /upload-image   - Upload image')
-    print('  POST /save-markdown  - Save markdown file')
-    print('  POST /export-site    - Export clean site (ZIP)')
-    print('  GET  /health         - Health check')
+    print('  POST /upload-image     - Upload image')
+    print('  POST /save-markdown    - Save markdown file (auto-update sidebar)')
+    print('  POST /export-site      - Export clean site (ZIP)')
+    print('  POST /cleanup-backups  - Clean all backup files')
+    print('  GET  /health           - Health check')
     print('=' * 60)
     print('Press Ctrl+C to stop')
     print()
