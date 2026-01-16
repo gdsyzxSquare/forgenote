@@ -1,37 +1,35 @@
-# ForgeNote 配置示例文件
-# 复制此文件为 cfg.yaml 并根据实际情况修改
+# ForgeNote Configuration Example
+# Copy this file as cfg.yaml and modify according to your needs
 
 course:
-  name: "Your Course Name"  # 课程名称
-  code: "COURSE_CODE"        # 课程代码
-  semester: "2024Spring"     # 学期
+  name: "Your Course Name"  # Course name
+  code: "COURSE_CODE"       # Course code (used for output folder naming)
+  semester: "2024Spring"    # Semester
 
 processing:
-  # 是否使用LLM进行智能处理
+  # Whether to use LLM for intelligent processing
   use_llm: true
   
-  # LLM配置
-  llm_provider: "openai"           # 支持: openai, mock
-  llm_model: "deepseek-reasoner"   # 模型名称，如: gpt-4, deepseek-reasoner
+  # LLM configuration
+  llm_provider: "openai"           # Supported: openai, mock
+  llm_model: "deepseek-reasoner"   # Model name, e.g.: gpt-4, deepseek-reasoner
   
-  # 是否应用人工修正补丁
-  apply_patches: false
 
 docsify:
-  # Docsify站点配置
-  name: "Course Documentation"     # 站点标题
-  repo: ""                         # GitHub仓库地址（可选）
-  theme: "vue"                     # 主题: vue, buble, dark, pure
+  # Docsify site configuration
+  name: "Course Documentation"     # Site title
+  repo: ""                         # GitHub repository URL (optional)
+  theme: "vue"                     # Theme: vue, buble, dark, pure
   
-  # 插件配置
+  # Plugin configuration
   plugins:
-    search: true        # 全文搜索
-    zoom_image: true    # 图片缩放
-    copy_code: true     # 代码复制
-    pagination: true    # 分页导航
-    katex: true         # 数学公式支持
+    search: true        # Full-text search
+    zoom_image: true    # Image zoom
+    copy_code: true     # Code copy button
+    pagination: true    # Page navigation
+    katex: true         # Math formula support
 
 paths:
-  # 路径配置（相对于项目根目录）
-  mineru_output: "../data/your_mineru_output"  # MinerU输出目录
-  output: "output"                             # 输出目录（会在此目录下创建课程代码子目录，如 output/SC2006/）
+  # Path configuration (relative to project root)
+  mineru_output: "your_mineru_output"  # MinerU output directory
+  output: "output"                     # Output directory (creates course code subfolder, e.g., output/COURSE001/)

@@ -1,9 +1,9 @@
 """
-ForgeNote 调试服务启动器
-一键启动所有必要服务：Docsify 文档服务 + 图片上传服务
+ForgeNote Debug Server Launcher
+Start all necessary services: Docsify documentation + Image upload service
 
-运行: python scripts/start_debug_server.py
-停止: Ctrl+C
+Usage: python scripts/start_debug_server.py [docsify_site_path]
+Stop: Ctrl+C
 """
 
 import subprocess
@@ -15,30 +15,71 @@ import platform
 from pathlib import Path
 from threading import Thread
 
-# 项目路径
+# Project root
 BASE_DIR = Path(__file__).parent.parent
-DOCSIFY_DIR = BASE_DIR / 'output' / 'SC2006' / 'docsify_site'
+DOCSIFY_DIR = None  # Will be set from user input or default
 
-# Windows 平台需要 .cmd 扩展名
+# Windows platform requires .cmd extension
 IS_WINDOWS = platform.system() == 'Windows'
 NPM_CMD = 'npm.cmd' if IS_WINDOWS else 'npm'
 DOCSIFY_CMD = 'docsify.cmd' if IS_WINDOWS else 'docsify'
 
-# 进程列表
+# Process list
 processes = []
 
+def get_docsify_dir():
+    """Get Docsify site directory from command line argument or prompt user"""
+    # Check command line argument
+    if len(sys.argv) > 1:
+        user_path = Path(sys.argv[1])
+        if not user_path.is_absolute():
+            user_path = BASE_DIR / user_path
+        
+        if user_path.is_dir():
+            print(f"📂 Using Docsify site: {user_path}")
+            return user_path
+        else:
+            print(f"❌ Invalid path: {user_path}")
+            sys.exit(1)
+    
+    # Prompt user for input
+    print("\n" + "="*60)
+    print("Please enter the path to your Docsify site directory:")
+    print("Example: output/COURSE001/docsify_site")
+    print("         output/MyProject/docsify_site")
+    print("="*60)
+    
+    while True:
+        user_input = input("\nPath: ").strip()
+        if not user_input:
+            print("❌ Path cannot be empty")
+            continue
+        
+        user_path = Path(user_input)
+        if not user_path.is_absolute():
+            user_path = BASE_DIR / user_path
+        
+        if user_path.is_dir():
+            print(f"✓ Using: {user_path}")
+            return user_path
+        else:
+            print(f"❌ Directory not found: {user_path}")
+            retry = input("Try again? (y/n): ").strip().lower()
+            if retry != 'y':
+                sys.exit(1)
+
 def print_banner():
-    """打印启动横幅"""
+    """Print startup banner"""
     print('=' * 70)
     print('  ForgeNote Debug Server')
     print('=' * 70)
     print()
 
 def check_dependencies():
-    """检查依赖"""
+    """Check dependencies"""
     print('[1/4] Checking dependencies...')
     
-    # 检查 Node.js
+    # Check Node.js
     try:
         result = subprocess.run(['node', '--version'], capture_output=True, text=True)
         print(f'  ✓ Node.js: {result.stdout.strip()}')
@@ -47,7 +88,7 @@ def check_dependencies():
         print('     Download: https://nodejs.org/')
         sys.exit(1)
     
-    # 检查 npm
+    # Check npm
     try:
         result = subprocess.run([NPM_CMD, '--version'], capture_output=True, text=True, shell=IS_WINDOWS)
         print(f'  ✓ npm: {result.stdout.strip()}')
@@ -56,7 +97,7 @@ def check_dependencies():
         print('     Download: https://nodejs.org/')
         sys.exit(1)
     
-    # 检查 docsify-cli
+    # Check docsify-cli
     try:
         result = subprocess.run([DOCSIFY_CMD, '--version'], capture_output=True, text=True, shell=IS_WINDOWS)
         print(f'  ✓ docsify-cli: {result.stdout.strip()}')
@@ -79,7 +120,7 @@ def check_dependencies():
             print('     npm install -g docsify-cli')
             sys.exit(1)
     
-    # 检查 Flask
+    # Check Flask
     try:
         import flask
         print(f'  ✓ Flask: {flask.__version__}')
@@ -87,7 +128,7 @@ def check_dependencies():
         print('  ✗ Flask not found. Please run: pip install flask flask-cors')
         sys.exit(1)
     
-    # 检查 flask-cors
+    # Check flask-cors
     try:
         import flask_cors
         print(f'  ✓ flask-cors: {flask_cors.__version__}')
@@ -98,18 +139,18 @@ def check_dependencies():
     print()
 
 def start_docsify_service():
-    """启动 Docsify 文档服务"""
+    """Start Docsify documentation service"""
     print('[2/4] Starting Docsify service...')
     print(f'  Directory: {DOCSIFY_DIR}')
     print('  URL: http://localhost:3000')
     
-    # 检查目录是否存在
+    # Check if directory exists
     if not DOCSIFY_DIR.exists():
         print(f'  ✗ Directory not found: {DOCSIFY_DIR}')
         print('  Please run the pipeline first: python scripts/run_pipeline.py')
         sys.exit(1)
     
-    # 启动 docsify serve
+    # Start docsify serve
     process = subprocess.Popen(
         [DOCSIFY_CMD, 'serve', '.', '--port', '3000'],
         cwd=str(DOCSIFY_DIR),
@@ -127,7 +168,7 @@ def start_docsify_service():
     return process
 
 def start_image_upload_service():
-    """启动文件服务（图片上传、保存、导出）"""
+    """Start file service (image upload, save, export)"""
     print('[3/4] Starting file service...')
     print('  URL: http://localhost:8001')
     
@@ -137,7 +178,7 @@ def start_image_upload_service():
         print(f'  ✗ Service script not found: {service_script}')
         sys.exit(1)
     
-    # 启动 Flask 服务
+    # Start Flask service
     process = subprocess.Popen(
         [sys.executable, str(service_script)],
         stdout=subprocess.PIPE,
@@ -153,7 +194,7 @@ def start_image_upload_service():
     return process
 
 def monitor_output(name, process):
-    """监控进程输出"""
+    """Monitor process output"""
     try:
         for line in process.stdout:
             if line.strip():
@@ -162,7 +203,7 @@ def monitor_output(name, process):
         pass
 
 def print_summary():
-    """打印服务摘要"""
+    """Print service summary"""
     print('[4/4] All services running!')
     print('=' * 70)
     print()
@@ -183,7 +224,7 @@ def print_summary():
     print()
 
 def signal_handler(sig, frame):
-    """处理 Ctrl+C 信号"""
+    """Handle Ctrl+C signal"""
     print('\n')
     print('=' * 70)
     print('Stopping all services...')
@@ -207,41 +248,46 @@ def signal_handler(sig, frame):
     sys.exit(0)
 
 def main():
-    """主函数"""
-    # 设置信号处理
+    """Main function"""
+    global DOCSIFY_DIR
+    
+    # Get Docsify directory
+    DOCSIFY_DIR = get_docsify_dir()
+    
+    # Setup signal handlers
     signal.signal(signal.SIGINT, signal_handler)
     signal.signal(signal.SIGTERM, signal_handler)
     
-    # 打印横幅
+    # Print banner
     print_banner()
     
-    # 检查依赖
+    # Check dependencies
     check_dependencies()
     
-    # 启动服务
+    # Start services
     docsify_process = start_docsify_service()
     image_upload_process = start_image_upload_service()
     
-    # 等待服务启动
+    # Wait for services to start
     time.sleep(2)
     
-    # 打印摘要
+    # Print summary
     print_summary()
     
-    # 启动输出监控线程
+    # Start output monitoring threads
     Thread(target=monitor_output, args=('Docsify', docsify_process), daemon=True).start()
     Thread(target=monitor_output, args=('FileService', image_upload_process), daemon=True).start()
     
-    # 保持运行
+    # Keep running
     try:
         while True:
-            # 检查进程是否还在运行
+            # Check if processes are still running
             for name, process in processes:
                 if process.poll() is not None:
                     print(f'\n⚠️  {name} service stopped unexpectedly!')
                     print('Exit code:', process.returncode)
                     
-                    # 尝试获取错误输出
+                    # Try to get error output
                     stderr = process.stderr.read() if process.stderr else ''
                     if stderr:
                         print('Error output:')

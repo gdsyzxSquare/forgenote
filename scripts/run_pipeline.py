@@ -1,11 +1,11 @@
 """
-ForgeNote简化版主流程
+ForgeNote Main Pipeline
 
-流程：
-1. 导入文档 -> 合并markdown内容
-2. 结构提取 -> LLM直接生成sidebar
-3. 内容填充 -> 根据sidebar生成章节文件
-4. 生成Docsify站点
+Pipeline:
+1. Import documents -> Merge markdown content
+2. Structure extraction -> LLM generates sidebar
+3. Content reorganization -> Generate chapter files based on sidebar
+4. Generate Docsify site
 """
 import sys
 from pathlib import Path
@@ -13,7 +13,8 @@ import yaml
 from dotenv import load_dotenv
 
 # 添加src到路径
-sys.path.insert(0, str(Path(__file__).parent.parent))
+BASE_DIR = Path(__file__).parent.parent
+sys.path.insert(0, str(BASE_DIR))
 
 from src.modules.document_importer import DocumentImporter
 from src.modules.structure_extractor_new import StructureExtractor
@@ -47,12 +48,12 @@ def main():
     # 初始化LLM客户端
     llm_client = None
     if config['processing'].get('use_llm', False):
-        print("🤖 初始化LLM客户端...")
+        print("🤖 Initializing LLM client...")
         llm_client = OpenAIClient(model=config['processing']['llm_model'])
-        print(f"   模型: {config['processing']['llm_model']}\n")
+        print(f"   Model: {config['processing']['llm_model']}\n")
     
-    # ========== 步骤1: 导入文档 ==========
-    print("📥 步骤1: 导入文档")
+    # ========== Step 1: Import Documents ==========
+    print("📥 Step 1: Importing documents")
     print("-" * 60)
     
     importer = DocumentImporter(
@@ -63,12 +64,12 @@ def main():
         mineru_output_dir=Path(config['paths']['mineru_output'])
     )
     file_mappings = result['file_mappings']
-    imported_dir = importer.raw_md_dir  # 导入的文件在这里
+    imported_dir = importer.raw_md_dir
     
-    print(f"\n✓ 导入完成: {len(file_mappings)} 个文件\n")
+    print(f"✓ Imported {len(file_mappings)} files\n")
     
-    # ========== 步骤2: 提取结构 ==========
-    print("🏗️  步骤2: 提取结构")
+    # ========== Step 2: Extract Structure ==========
+    print("🏗️  Step 2: Extracting structure")
     print("-" * 60)
     
     extractor = StructureExtractor(llm_client=llm_client)
@@ -80,8 +81,7 @@ def main():
         if filepath.exists():
             raw_contents[dest_filename] = filepath.read_text(encoding='utf-8')
     
-    # 提取结构
-    # 合并所有内容
+    # 提取结构 - 合并所有内容
     all_content = "\n\n".join([
         f"# {filename}\n\n{content}"
         for filename, content in raw_contents.items()
@@ -99,18 +99,14 @@ def main():
             course_name=config['course']['name']
         )
     
-    print(f"\n✓ 结构提取完成:")
-    print(f"   章节数: {len(structure.chapters)}")
-    total_sections = sum(len(ch.sections) for ch in structure.chapters)
-    print(f"   小节数: {total_sections}\n")
+    print(f"✓ Structure extracted: {len(structure.chapters)} chapters, {sum(len(ch.sections) for ch in structure.chapters)} sections\n")
     
     # 保存sidebar预览
     sidebar_preview = work_dir / "sidebar_preview.md"
     sidebar_preview.write_text(structure.sidebar_md, encoding='utf-8')
-    print(f"✓ Sidebar预览已保存: {sidebar_preview}\n")
     
-    # ========== 步骤3: 重组内容 ==========
-    print("📝 步骤3: 重组内容")
+    # ========== Step 3: Reorganize Content ==========
+    print("📝 Step 3: Reorganizing content")
     print("-" * 60)
     
     reorganizer = ContentReorganizer(llm_client=llm_client)
@@ -122,23 +118,20 @@ def main():
         course_name=config['course']['name']
     )
     
-    print(f"\n✓ 内容重组完成: {len(chapter_contents)} 个章节文件\n")
+    print(f"✓ Content reorganized: {len(chapter_contents)} chapters\n")
     
-    # ========== 步骤3.5: 美化内容 ==========
-    print("✨ 步骤3.5: 美化内容")
-    print("-" * 60)
-    
+    # ========== Step 3.5: Beautify Content ==========
     if config['processing'].get('use_llm', False):
+        print("✨ Step 3.5: Beautifying content")
+        print("-" * 60)
         chapter_contents = reorganizer.beautify_content(chapter_contents)
-        print(f"\n✓ 内容美化完成\n")
-    else:
-        print("  跳过美化（LLM未启用）\n")
+        print(f"✓ Content beautified\n")
     
     # 保存章节文件
     reorganizer.save_to_files(chapter_contents, content_dir)
     
-    # ========== 步骤4: 生成Docsify站点 ==========
-    print("🌐 步骤4: 生成Docsify站点")
+    # ========== Step 4: Generate Docsify Site ==========
+    print("🌐 Step 4: Generating Docsify site")
     print("-" * 60)
     
     generator = DocsifyGenerator()
@@ -147,18 +140,19 @@ def main():
         sidebar_md=structure.sidebar_md,
         content_dir=content_dir,
         output_dir=site_dir,
-        assets_dir=importer.assets_dir  # 传递assets目录
+        assets_dir=importer.assets_dir
     )
     
     print(f"\n{'='*60}")
-    print("✅ 处理完成!")
+    print("✅ Pipeline completed successfully!")
     print(f"{'='*60}\n")
-    print(f"📂 Docsify站点目录: {site_dir.absolute()}")
-    print(f"📄 Sidebar预览: {sidebar_preview.absolute()}")
-    print(f"\n💡 预览网站:")
-    print(f"   cd {site_dir.absolute()}")
-    print(f"   python -m http.server 3000")
-    print(f"   然后打开: http://localhost:3000\n")
+    print(f"📂 Documentation: {site_dir.absolute()}")
+    print(f"\n💡 Next steps:")
+    print(f"   Start debug server with:")
+    print(f"   python scripts/start_debug_server.py {site_dir}")
+    print(f"   Or simply: python scripts/start_debug_server.py")
+    print(f"   (You'll be prompted to enter the path)")
+    print(f"\n   Then open: http://localhost:3000\n")
 
 
 if __name__ == "__main__":
