@@ -74,30 +74,37 @@ def main():
     
     extractor = StructureExtractor(llm_client=llm_client)
     
-    # 读取所有导入的文件
-    raw_contents = {}
-    for dest_filename in file_mappings.keys():
-        filepath = imported_dir / dest_filename
-        if filepath.exists():
-            raw_contents[dest_filename] = filepath.read_text(encoding='utf-8')
+    # 使用新的逐章提取方法
+    chapter_list = result.get('chapter_list', [])
     
-    # 提取结构 - 合并所有内容
-    all_content = "\n\n".join([
-        f"# {filename}\n\n{content}"
-        for filename, content in raw_contents.items()
-    ])
+    if not chapter_list:
+        # 兼容旧版本：如果没有chapter_list，从file_mappings构建
+        raw_contents = {}
+        for dest_filename in file_mappings.keys():
+            filepath = imported_dir / dest_filename
+            if filepath.exists():
+                content = filepath.read_text(encoding='utf-8')
+                raw_contents[dest_filename] = content
+                title = importer._extract_title_from_content(content, dest_filename)
+                chapter_list.append({
+                    "filename": dest_filename,
+                    "title": title,
+                    "content": content
+                })
     
-    # 调用LLM生成sidebar
+    # 使用逐章提取方法生成sidebar
     if llm_client:
-        structure = extractor._extract_with_llm(
-            content=all_content,
-            course_name=config['course']['name']
-        )
+        structure = extractor.extract_structure_incremental(chapter_list)
     else:
+        # 回退到旧方法
+        all_content = "\n\n".join([ch["content"] for ch in chapter_list])
         structure = extractor._extract_with_rules(
             content=all_content,
             course_name=config['course']['name']
         )
+    
+    # 构建raw_contents供后续步骤使用
+    raw_contents = {ch["filename"]: ch["content"] for ch in chapter_list}
     
     print(f"✓ Structure extracted: {len(structure.chapters)} chapters, {sum(len(ch.sections) for ch in structure.chapters)} sections\n")
     

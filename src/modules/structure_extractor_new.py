@@ -67,6 +67,94 @@ class StructureExtractor:
         """
         self.llm_client = llm_client
     
+    def extract_structure_incremental(self, chapter_list: List[Dict]) -> CourseStructure:
+        """
+        逐章提取结构并累积生成完整sidebar
+        
+        Args:
+            chapter_list: 章节列表 [{"filename": "xxx", "title": "xxx", "content": "xxx"}]
+            
+        Returns:
+            完整的课程结构对象
+        """
+        if not self.llm_client:
+            # 如果没有LLM，回退到规则提取
+            all_content = "\n\n".join([ch["content"] for ch in chapter_list])
+            return self._extract_with_rules(all_content, "Course")
+        
+        accumulated_sidebar = ""
+        total = len(chapter_list)
+        
+        print(f"\n逐章提取结构（共{total}章）...\n")
+        
+        for i, chapter_info in enumerate(chapter_list, 1):
+            print(f"[{i}/{total}] 处理章节: {chapter_info['title']}")
+            print(f"  原始文件: {chapter_info['filename']}")
+            
+            # 构建prompt
+            prompt = f"""{STRUCTURE_EXTRACTION_PROMPT}
+
+Previously generated sidebar (DO NOT modify these entries):
+```markdown
+{accumulated_sidebar}
+```
+
+**CRITICAL CONSTRAINTS - READ CAREFULLY:**
+1. You MUST generate EXACTLY ONE new chapter entry for the input file below
+2. DO NOT modify, reorganize, or renumber any existing chapters above
+3. APPEND the new chapter entry to the end of the existing sidebar
+4. Each input file = ONE and ONLY ONE top-level chapter entry
+
+**Original PDF Filename:** {chapter_info['filename']}
+**Extracted Content Title:** {chapter_info['title']}
+
+**Instructions for chapter title generation:**
+- If the PDF filename contains semantic information (e.g., "Chapter05Polymorphism" or "UML-ClassDiagram"), use it to create a descriptive title like "Chapter 5: Polymorphism" or "UML Class Diagram"
+- If the filename is meaningless/generic (e.g., "document1.pdf", random UUID), use the extracted content title
+- DO NOT create fake chapter numbers that don't exist in the original filename
+
+**Chapter Content (analyze to extract section structure):**
+```markdown
+{chapter_info['content'][:60000]}
+```
+
+**Required output format:**
+1. Copy ALL previous chapter entries exactly as-is (preserve formatting, indentation, links)
+2. Add ONE new chapter entry at the end with its sections
+3. Output ONLY the complete sidebar markdown, no explanation
+
+Example output structure:
+```
+[... all previous chapters unchanged ...]
+
+* [New Chapter Title](filename.md)
+  * [Section 1](filename.md#section-1)
+  * [Section 2](filename.md#section-2)
+```
+"""
+            
+            # 调用LLM
+            response = self.llm_client.generate(prompt, temperature=0.3, max_tokens=32000)
+            
+            # 清理response
+            accumulated_sidebar = response.strip()
+            if accumulated_sidebar.startswith('```'):
+                accumulated_sidebar = re.sub(r'^```\w*\n', '', accumulated_sidebar)
+                accumulated_sidebar = re.sub(r'\n```$', '', accumulated_sidebar)
+            
+            print(f"  ✓ Sidebar当前长度: {len(accumulated_sidebar)} 字符\n")
+        
+        print(f"\n{'='*60}")
+        print(f"最终Sidebar (前500字符):")
+        print(f"{'='*60}")
+        print(accumulated_sidebar[:500] if len(accumulated_sidebar) > 500 else accumulated_sidebar)
+        print(f"{'='*60}\n")
+        
+        # 解析最终的sidebar
+        structure = self._parse_sidebar_to_structure(accumulated_sidebar, "Course")
+        
+        return structure
+    
     def extract_from_markdown(self, md_file: Path) -> CourseStructure:
         """
         从Markdown文件中提取课程结构

@@ -36,6 +36,25 @@ class DocumentImporter:
         self.assets_dir.mkdir(parents=True, exist_ok=True)
     
     @staticmethod
+    def _extract_title_from_content(content: str, fallback_name: str) -> str:
+        """
+        从markdown内容中提取第一个一级标题作为章节标题
+        
+        Args:
+            content: markdown内容
+            fallback_name: 如果未找到标题时的后备名称
+            
+        Returns:
+            章节标题
+        """
+        import re
+        # 查找第一个一级标题 (# Title)
+        match = re.search(r'^#\s+(.+)$', content, re.MULTILINE)
+        if match:
+            return match.group(1).strip()
+        return fallback_name
+    
+    @staticmethod
     def _sanitize_filename(filename: str) -> str:
         """
         规范化文件名，移除或替换特殊字符
@@ -84,6 +103,7 @@ class DocumentImporter:
             "markdown_files": [],
             "image_files": [],
             "file_mappings": {},  # 记录文件和图片的映射关系
+            "chapter_list": [],  # 新增：章节列表 [{"filename": "xxx", "title": "xxx", "content": "xxx"}]
             "status": "success"
         }
         

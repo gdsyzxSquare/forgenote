@@ -3,6 +3,7 @@
 
 基于sidebar结构，为每个章节填充内容
 """
+import re
 from pathlib import Path
 from typing import List, Dict
 from dataclasses import dataclass
@@ -49,22 +50,61 @@ class ContentReorganizer:
         """
         chapter_contents = []
         
-        # 将raw_contents按文件名排序，便于匹配
-        raw_list = list(raw_contents.items())
+        # 构建标题到内容的映射（用于智能匹配）
+        # 从每个原始文件中提取第一个一级标题
+        title_to_content = {}
+        for filename, content in raw_contents.items():
+            # 提取第一个一级标题
+            match = re.search(r'^#\s+(.+)$', content, re.MULTILINE)
+            if match:
+                extracted_title = match.group(1).strip()
+                title_to_content[extracted_title] = (filename, content)
+            else:
+                # 如果没有标题，使用文件名
+                title_to_content[filename] = (filename, content)
+        
+        print(f"\n[调试] 原始文件标题映射:")
+        for title, (filename, _) in title_to_content.items():
+            print(f"  '{title}' -> {filename}")
         
         for idx, chapter in enumerate(structure.chapters):
-            print(f"\n处理章节: {chapter.title}")
+            print(f"\n处理章节 [{idx+1}/{len(structure.chapters)}]: {chapter.title}")
             
-            # 尝试找到对应的原始文件
-            # 假设章节按导入顺序对应原始文件
+            # 智能匹配：优先精确匹配标题，其次模糊匹配，最后按索引
             chapter_raw_content = ""
-            if idx < len(raw_list):
-                chapter_raw_content = raw_list[idx][1]
-                print(f"  使用原始文件: {raw_list[idx][0]}")
-            else:
-                # 如果没有对应文件，使用所有内容
-                chapter_raw_content = "\n\n".join(raw_contents.values())
-                print(f"  使用所有原始内容")
+            matched_file = None
+            
+            # 1. 尝试精确匹配标题
+            if chapter.title in title_to_content:
+                matched_file, chapter_raw_content = title_to_content[chapter.title]
+                print(f"  ✓ 精确匹配: {matched_file}")
+            
+            # 2. 尝试模糊匹配（标题包含关系 + 规范化空格）
+            elif not chapter_raw_content:
+                # 规范化章节标题：移除多余空格
+                normalized_chapter_title = ' '.join(chapter.title.split())
+                
+                for title, (filename, content) in title_to_content.items():
+                    normalized_title = ' '.join(title.split())
+                    # 双向包含检查（忽略大小写和多余空格）
+                    if (normalized_chapter_title.lower() in normalized_title.lower() or 
+                        normalized_title.lower() in normalized_chapter_title.lower()):
+                        matched_file, chapter_raw_content = filename, content
+                        print(f"  ✓ 模糊匹配: '{chapter.title}' ≈ '{title}'")
+                        print(f"    文件: {matched_file}")
+                        break
+            
+            # 3. 回退到索引匹配
+            if not chapter_raw_content:
+                raw_list = list(raw_contents.items())
+                if idx < len(raw_list):
+                    matched_file = raw_list[idx][0]
+                    chapter_raw_content = raw_list[idx][1]
+                    print(f"  ⚠ 索引匹配 (可能不准确): {matched_file}")
+                else:
+                    # 最后手段：使用所有内容
+                    chapter_raw_content = "\n\n".join(raw_contents.values())
+                    print(f"  ⚠ 使用所有原始内容（未找到匹配）")
             
             if self.llm_client and chapter.sections:
                 # 使用LLM填充内容
