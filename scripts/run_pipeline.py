@@ -44,6 +44,7 @@ def main():
     
     content_dir = work_dir / "content"
     site_dir = work_dir / "docsify_site"
+    assets_dir = work_dir / "assets"
     
     # 初始化LLM客户端
     llm_client = None
@@ -68,23 +69,16 @@ def main():
     
     print(f"✓ Imported {len(file_mappings)} files\n")
     
-    # ========== Step 2: Extract Structure ==========
-    print("🏗️  Step 2: Extracting structure")
-    print("-" * 60)
-    
-    extractor = StructureExtractor(llm_client=llm_client)
-    
-    # 使用新的逐章提取方法
+    # ========== Step 2-3: Process Documents ==========
+    # 构建chapter_list
     chapter_list = result.get('chapter_list', [])
     
     if not chapter_list:
         # 兼容旧版本：如果没有chapter_list，从file_mappings构建
-        raw_contents = {}
         for dest_filename in file_mappings.keys():
             filepath = imported_dir / dest_filename
             if filepath.exists():
                 content = filepath.read_text(encoding='utf-8')
-                raw_contents[dest_filename] = content
                 title = importer._extract_title_from_content(content, dest_filename)
                 chapter_list.append({
                     "filename": dest_filename,
@@ -92,62 +86,103 @@ def main():
                     "content": content
                 })
     
-    # 使用逐章提取方法生成sidebar
-    if llm_client:
-        structure = extractor.extract_structure_incremental(chapter_list)
-    else:
-        # 回退到旧方法
-        all_content = "\n\n".join([ch["content"] for ch in chapter_list])
-        structure = extractor._extract_with_rules(
-            content=all_content,
+    # 判断使用新流程还是旧流程
+    use_unified = config['processing'].get('use_unified_processor', False)
+    
+    if use_unified and llm_client:
+        # ========== 新流程: 统一处理器（一次性生成） ==========
+        from src.modules.unified_document_processor import UnifiedDocumentProcessor
+        
+        print("🚀 Step 2-3: Unified Processing (One-Pass Generation)")
+        print("-" * 60)
+        
+        processor = UnifiedDocumentProcessor(llm_client=llm_client)
+        
+        # 一次性生成所有章节
+        chapters = processor.process_chapters(
+            chapter_list=chapter_list,
+            output_dir=content_dir,
             course_name=config['course']['name']
         )
-    
-    # 构建raw_contents供后续步骤使用
-    raw_contents = {ch["filename"]: ch["content"] for ch in chapter_list}
-    
-    print(f"✓ Structure extracted: {len(structure.chapters)} chapters, {sum(len(ch.sections) for ch in structure.chapters)} sections\n")
-    
-    # 保存sidebar预览
-    sidebar_preview = work_dir / "sidebar_preview.md"
-    sidebar_preview.write_text(structure.sidebar_md, encoding='utf-8')
-    
-    # ========== Step 3: Reorganize Content ==========
-    print("📝 Step 3: Reorganizing content")
-    print("-" * 60)
-    
-    reorganizer = ContentReorganizer(llm_client=llm_client)
-    
-    # 根据结构填充内容
-    chapter_contents = reorganizer.reorganize_by_structure(
-        structure=structure,
-        raw_contents=raw_contents,
-        course_name=config['course']['name']
-    )
-    
-    print(f"✓ Content reorganized: {len(chapter_contents)} chapters\n")
-    
-    # ========== Step 3.5: Beautify Content ==========
-    if config['processing'].get('use_llm', False):
-        print("✨ Step 3.5: Beautifying content")
+        
+        # 生成sidebar
+        sidebar_md = processor.generate_sidebar(chapters)
+        
+        # 保存sidebar预览
+        sidebar_preview = work_dir / "sidebar_preview.md"
+        sidebar_preview.write_text(sidebar_md, encoding='utf-8')
+        
+        print(f"✓ Unified processing completed: {len(chapters)} chapters\n")
+        
+    else:
+        # ========== 旧流程: 三步骤处理 ==========
+        print("🏗️  Step 2: Extracting structure")
         print("-" * 60)
-        chapter_contents = reorganizer.beautify_content(chapter_contents)
-        print(f"✓ Content beautified\n")
-    
-    # 保存章节文件
-    reorganizer.save_to_files(chapter_contents, content_dir)
+        
+        extractor = StructureExtractor(llm_client=llm_client)
+        
+        # 使用逐章提取方法生成sidebar
+        if llm_client:
+            structure = extractor.extract_structure_incremental(chapter_list)
+        else:
+            # 回退到旧方法
+            all_content = "\n\n".join([ch["content"] for ch in chapter_list])
+            structure = extractor._extract_with_rules(
+                content=all_content,
+                course_name=config['course']['name']
+            )
+        
+        # 构建raw_contents供后续步骤使用
+        raw_contents = {ch["filename"]: ch["content"] for ch in chapter_list}
+        
+        print(f"✓ Structure extracted: {len(structure.chapters)} chapters, {sum(len(ch.sections) for ch in structure.chapters)} sections\n")
+        
+        # 保存sidebar预览
+        sidebar_preview = work_dir / "sidebar_preview.md"
+        sidebar_preview.write_text(structure.sidebar_md, encoding='utf-8')
+        
+        # ========== Step 3: Reorganize Content ==========
+        print("📝 Step 3: Reorganizing content")
+        print("-" * 60)
+        
+        reorganizer = ContentReorganizer(llm_client=llm_client)
+        
+        # 根据结构填充内容
+        chapter_contents = reorganizer.reorganize_by_structure(
+            structure=structure,
+            raw_contents=raw_contents,
+            course_name=config['course']['name']
+        )
+        
+        print(f"✓ Content reorganized: {len(chapter_contents)} chapters\n")
+        
+        # ========== Step 3.5: Beautify Content ==========
+        if config['processing'].get('use_llm', False):
+            print("✨ Step 3.5: Beautifying content")
+            print("-" * 60)
+            chapter_contents = reorganizer.beautify_content(chapter_contents)
+            print(f"✓ Content beautified\n")
+        
+        # 保存章节文件
+        reorganizer.save_to_files(chapter_contents, content_dir)
+        
+        # 从structure获取sidebar
+        sidebar_md = structure.sidebar_md
     
     # ========== Step 4: Generate Docsify Site ==========
     print("🌐 Step 4: Generating Docsify site")
     print("-" * 60)
     
+    from src.modules.docsify_generator_new import DocsifyGenerator
+    
     generator = DocsifyGenerator()
+    
     generator.generate_site(
         course_name=config['course']['name'],
-        sidebar_md=structure.sidebar_md,
+        sidebar_md=sidebar_md,
         content_dir=content_dir,
         output_dir=site_dir,
-        assets_dir=importer.assets_dir
+        assets_dir=assets_dir
     )
     
     print(f"\n{'='*60}")
